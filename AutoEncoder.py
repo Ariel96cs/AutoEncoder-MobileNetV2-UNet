@@ -10,9 +10,15 @@ from sklearn.model_selection import train_test_split
 import json
 
 class MobileNetV2_UNet:
-
+    def __init__(self,input_shape=(224,224,3),read_image_func=None):
+        super().__init__()
+        self.dice_coefficient = False
+        self.model = None
+        self.input_shape = input_shape
+        self.read_image_func = read_image_func
+        
     def build_model(self,nodes):
-        mobileNet = MobileNetV2(input_shape=(224,224,3),include_top=False)
+        mobileNet = MobileNetV2(input_shape=self.input_shape,include_top=False)
         inputs = mobileNet.inputs
 
         c5 = [layer for layer in mobileNet.layers if layer.name == 'block_16_project_BN'][0].output
@@ -20,6 +26,12 @@ class MobileNetV2_UNet:
         c3 = [layer for layer in mobileNet.layers if layer.name == 'block_5_add'][0].output
         c2 = [layer for layer in mobileNet.layers if layer.name == 'block_2_add'][0].output
         c1 = [layer for layer in mobileNet.layers if layer.name == 'expanded_conv_project_BN'][0].output
+
+        # c5 = [layer for layer in mobileNet.layers if layer.name == 'block_16_project'][0].output
+        # c4 = [layer for layer in mobileNet.layers if layer.name == 'block_12_project'][0].output
+        # c3 = [layer for layer in mobileNet.layers if layer.name == 'block_5_project'][0].output
+        # c2 = [layer for layer in mobileNet.layers if layer.name == 'block_2_project'][0].output
+        # c1 = [layer for layer in mobileNet.layers if layer.name == 'Conv1'][0].output
 
         # DECODER Unet
 
@@ -55,13 +67,22 @@ class MobileNetV2_UNet:
         c9 = Conv2D(nodes, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same')(c9)
         c9 = BatchNormalization()(c9)
 
-        outputs = Conv2D(1, (1, 1), activation='sigmoid')(c9)
+        u10 = Conv2DTranspose(nodes, (2, 2), strides=(2, 2), padding='same',name='last_block_transponse')(c9)
+#         u10 = concatenate([u9, c1], axis=3)
+        c10 = Conv2D(nodes, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same')(u10)
+        c10 = BatchNormalization()(c10)
+        c10 = Dropout(0.1)(c10)
+        c10 = Conv2D(nodes, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same')(c10)
+        c10 = BatchNormalization()(c10)
+
+
+        outputs = Conv2D(3, (1, 1), activation='sigmoid')(c10)
 
         self.model = Model(inputs=[inputs], outputs=[outputs])
         return self.model
     def train_model(self, x_train, y_train, early_stopping_patience=None, reduce_lr_callback=True,epochs=60, checkpoint_filepath='./checkpoints/',
                     save_best_only=True,validation_split=0.1, verbose=1,
-                    batch_size=32, use_custom_generator_training=False,
+                    batch_size=32, use_custom_generator_training=True,
                     save_distribution=False, initial_epoch=0,
                     x_val=None,y_val=None):
         callbacks = []
