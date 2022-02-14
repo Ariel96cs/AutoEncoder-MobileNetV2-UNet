@@ -8,7 +8,10 @@ from CustomGenerator import CustomDataGen
 from sklearn.model_selection import train_test_split
 import json
 from tensorflow.keras import backend as K
+from tensorflow.keras.preprocessing.image import load_img, img_to_array
+from PIL import Image
 import numpy as np
+from tqdm import tqdm
 
 class MobileNetV2_UNet:
     def __init__(self,input_shape=(224,224,3),read_image_func=None,encoder_output_size=None):
@@ -23,7 +26,7 @@ class MobileNetV2_UNet:
             self.encoder_last_layer_name = "latent-space-rep"
         else:
             self.encoder_last_layer_name = "block_16_project_BN"
-
+        self.encoder = None
         
     def build_model(self,nodes):
         mobileNet = MobileNetV2(input_shape=self.input_shape,include_top=False)
@@ -154,13 +157,16 @@ class MobileNetV2_UNet:
         self.model = load_model(model_path,custom_objects={'bce_dice_loss':self.bce_dice_loss,'dice_coeff':self.dice_coeff})
         return self.model
 
-    def save_autoencoder(self,path):
+    def extract_autoencoder(self,save_model_path=None):
         if self.model is not None:
             output_layer = [layer.output for layer in self.model.layers if layer.name == self.encoder_last_layer_name][0]
             model = Model(self.model.input,output_layer,name='autoencoder')
-            model.save(path)
+            if save_model_path is not None:
+                model.save(save_model_path)
+            self.encoder = model
             return model
         return None
+
     def model_is_compiled(self):
         return self.model._is_compiled
 
@@ -180,6 +186,34 @@ class MobileNetV2_UNet:
     def bce_dice_loss(self,y_true, y_pred):
         loss = tf.keras.losses.binary_crossentropy(y_true, y_pred) + self.dice_loss(y_true, y_pred)
         return loss
+
+    def predict_image(self,input_path):
+        img = load_img(input_path)
+        img = img.resize(self.input_shape[:-1],Image.ANTIALIAS)
+
+        input_arr = img_to_array(img)
+        input_arr = np.array([input_arr])  # Convert single image to a batch.
+        
+        self.extract_autoencoder()
+        prediction = self.encoder.predict(input_arr)
+        return prediction[0]
+
+    def make_predictions(self,input_paths,batch_size):
+
+        data_get = CustomDataGen(input_paths, [i for i in input_paths], batch_size, self.input_shape,predict_iter=True)
+        predictions = []
+        self.extract_autoencoder()
+        for i in tqdm(list(range(len(input_paths)//batch_size + 1))):
+            batch = data_get[i]
+            if len(batch[0])==0:
+                break
+            prediction = self.encoder.predict(batch[0])
+            for pred in prediction:
+                predictions.append(pred)
+        return np.array(predictions)
+            
+
+
 
 
 

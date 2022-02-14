@@ -45,7 +45,9 @@ class CustomDataGen(Sequence):
                  y_paths,
                  batch_size,
                  input_size=(224, 224, 3),
-                 shuffle_=True, load_images_func=None,data_augmentation=False):
+                 shuffle_=True, load_images_func=None,
+                 data_augmentation=False,
+                 predict_iter=False):
         self.batch_size = batch_size
         self.input_size = input_size
         self.shuffle = shuffle_
@@ -53,6 +55,7 @@ class CustomDataGen(Sequence):
         self.y_paths = y_paths
         self.read_image = load_images_func
         self.data_augmentation = data_augmentation
+        self.predict_iter = predict_iter
 
         self.n = len(self.x_paths)
         if shuffle_:
@@ -120,7 +123,10 @@ class CustomDataGen(Sequence):
             else:
                 for x_path,y_path in zip(batches_x,batches_y):
                     X.append(self.__load_image(x_path,shape,gray=self.input_size[-1]==1))
-                    y.append(self.__load_image(y_path,shape,gray=self.input_size[-1]==1))
+                    if not self.predict_iter:
+                        y.append(self.__load_image(y_path,shape,gray=self.input_size[-1]==1))
+                    else:
+                        y.append(y_path)
 
 
         else:
