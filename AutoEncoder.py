@@ -1,21 +1,29 @@
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
-from tensorflow.keras.layers import Conv2D,Dropout,MaxPooling2D,Conv2DTranspose, BatchNormalization,Input,Lambda,concatenate
+from tensorflow.keras.layers import Conv2D,Dropout,Dense,Conv2DTranspose, BatchNormalization,Input,Flatten,concatenate,Reshape
 from tensorflow.keras.models import Model,load_model
-from tensorflow.keras.metrics import MeanIoU
 from tensorflow.keras.callbacks import EarlyStopping,ModelCheckpoint,ReduceLROnPlateau
 from tensorflow.keras.optimizers import Adam
 import tensorflow as tf
 from CustomGenerator import CustomDataGen
 from sklearn.model_selection import train_test_split
 import json
+from tensorflow.keras import backend as K
+import numpy as np
 
 class MobileNetV2_UNet:
-    def __init__(self,input_shape=(224,224,3),read_image_func=None):
+    def __init__(self,input_shape=(224,224,3),read_image_func=None,encoder_output_size=None):
         super().__init__()
         self.dice_coefficient = False
         self.model = None
         self.input_shape = input_shape
         self.read_image_func = read_image_func
+        self.encoder_output_size = encoder_output_size
+
+        if encoder_output_size is not None:
+            self.encoder_last_layer_name = "latent-space-rep"
+        else:
+            self.encoder_last_layer_name = "block_16_project_BN"
+
         
     def build_model(self,nodes):
         mobileNet = MobileNetV2(input_shape=self.input_shape,include_top=False)
@@ -32,6 +40,13 @@ class MobileNetV2_UNet:
         # c3 = [layer for layer in mobileNet.layers if layer.name == 'block_5_project'][0].output
         # c2 = [layer for layer in mobileNet.layers if layer.name == 'block_2_project'][0].output
         # c1 = [layer for layer in mobileNet.layers if layer.name == 'Conv1'][0].output
+
+        if self.encoder_output_size is not None:
+            volumeSize = K.int_shape(c5)
+            x = Flatten()(c5)
+            x = Dense(self.encoder_output_size,name="latent-space-rep")(x)
+            x = Dense(np.prod(volumeSize[1:]))(x)
+            c5 = Reshape((volumeSize[1],volumeSize[2],volumeSize[3]))(x)
 
         # DECODER Unet
 
@@ -139,6 +154,13 @@ class MobileNetV2_UNet:
         self.model = load_model(model_path,custom_objects={'bce_dice_loss':self.bce_dice_loss,'dice_coeff':self.dice_coeff})
         return self.model
 
+    def save_autoencoder(self,path):
+        if self.model is not None:
+            output_layer = [layer.output for layer in self.model.layers if layer.name == self.encoder_last_layer_name][0]
+            model = Model(self.model.input,output_layer,name='autoencoder')
+            model.save(path)
+            return True
+        return False
     def model_is_compiled(self):
         return self.model._is_compiled
 

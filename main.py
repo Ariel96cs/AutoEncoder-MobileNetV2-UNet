@@ -7,8 +7,9 @@ from os import makedirs
 
 from sklearn.model_selection import train_test_split
 
-BATCH_SIZE = 1
+BATCH_SIZE = 64
 INPUT_SHAPE = (320,320,3)
+LATENT_SPACE_SIZE = 64
 
 def load_paths(csv_path):
     x_paths = []
@@ -26,7 +27,7 @@ def main():
     parser.add_argument('-ck','--checkpoints_path')
     args = parser.parse_args()
 
-    model = MobileNetV2_UNet(input_shape=INPUT_SHAPE)
+    model = MobileNetV2_UNet(input_shape=INPUT_SHAPE,encoder_output_size=LATENT_SPACE_SIZE)
     model.build_model(nodes=2)
     model.compile_model()
     model.model.summary()
